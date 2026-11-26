@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta name="theme-color" content="#12304a">
+<title>InstruLog MTW</title>
+<style>
+:root{--ink:#14202b;--navy:#12304a;--paper:#eef1f3;--card:#fff;--line:#d3dae0;--mute:#5d6b78;--ok:#2e8b57;--wip:#d98e04;--bad:#c0392b}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--paper);color:var(--ink);padding-bottom:70px}
+header{background:var(--navy);color:#fff;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:5}
+header b{font-size:18px}header small{display:block;opacity:.75;font-size:12px}
+main{padding:14px;max-width:640px;margin:auto}
+h2{font-size:17px;margin:4px 0 12px}
+.card{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--navy);border-radius:6px;padding:12px;margin-bottom:10px}
+.card.Selesai{border-left-color:var(--ok)}.card.Proses{border-left-color:var(--wip)}.card.Pending{border-left-color:var(--bad)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:10px}
+.stat b{font-size:26px;display:block}.stat span{color:var(--mute);font-size:13px}
+label{display:block;font-weight:600;margin:10px 0 4px;font-size:13px}
+input,select,textarea{width:100%;padding:10px;border:1px solid #9aa7b3;border-radius:6px;font:inherit;background:#fff}
+textarea{min-height:80px}
+button{font:inherit;font-weight:600;border:0;border-radius:6px;padding:11px 16px;background:var(--navy);color:#fff;cursor:pointer}
+button.alt{background:#fff;color:var(--navy);border:1px solid var(--navy)}
+button.del{background:var(--bad)}button.sm{padding:6px 12px;font-size:13px}
+.row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}.row>*{flex:1}
+.tag{font-weight:700}.meta{color:var(--mute);font-size:13px}
+.badge{float:right;font-size:12px;font-weight:700;color:#fff;border-radius:10px;padding:2px 9px}
+.badge.Selesai{background:var(--ok)}.badge.Proses{background:var(--wip)}.badge.Pending{background:var(--bad)}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#fff;border-top:1px solid var(--line)}
+nav button{flex:1;background:none;color:var(--mute);border-radius:0;padding:13px 4px;font-size:13px}
+nav button.on{color:var(--navy);box-shadow:inset 0 3px 0 var(--navy)}
+.empty{text-align:center;color:var(--mute);padding:24px}
+.msg{background:#fff4d6;border:1px solid #e8c766;padding:10px;border-radius:6px;margin-bottom:10px}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style></head><body>
+<div id="app"></div>
+<script>
+const U={
+"Blok 1":["GT 1.1","GT 1.2","GT 1.3","HRSG 1.1","HRSG 1.2","HRSG 1.3","ST 1.4"],
+"Blok 2":["GT 2.1","GT 2.2","HRSG 2.1","HRSG 2.2","ST 2.0"],
+"Blok 3":["GT 3.1","GT 3.2","GT 3.3","HRSG 3.1","HRSG 3.2","HRSG 3.3","ST 3.0"],
+"Blok 4":["GT 4.1","GT 4.2","GT 4.3","HRSG 4.1","HRSG 4.2","HRSG 4.3","ST 4.0"],
+"Blok 5":["GT 5.1","HRSG 5.1","ST 5.8"],
+"BOP Blok 1":["Water Intake","Chlorination Plant","Desalination Plant","WTP","WWTP","Air Compressor ST","Air Compressor BOP","Pump House","H2 Plant","EDG 1","EDG 2"],
+"BOP Blok 234":["Water Intake","Chlorination Plant","Desalination Plant","WTP","WWTP","Air Compressor ST","Air Compressor BOP","Pump House","H2 Plant","EDG GT 3","EDG GT 4","EDG Add On"],
+"BOP Blok 5":["Water Intake","Chlorination Plant","Desalination Plant","WTP","WWTP","Air Compressor ST","Air Compressor BOP","Pump House","EDG 5"]};
+const $=s=>document.querySelector(s);
+const e=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const ld=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))||d}catch(x){return d}};
+const sv=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(x){alert("Penyimpanan penuh atau diblokir")}};
+const hs=s=>{let x=5381;for(const c of s)x=(x*33)^c.charCodeAt(0);return(x>>>0).toString(36)};
+const today=()=>new Date().toISOString().slice(0,10);
+const DEFAULT_API="https://script.google.com/macros/s/AKfycbzysmUZ6A6xOVkZ545aLtZw-c9ZzCpxxjRlRaVqFUs6v-1KUIm7pUlaD4VBNgaboLpg/exec"; /* isi dengan URL Web App agar semua HP langsung terhubung */
+let API=localStorage.getItem("il_api")||DEFAULT_API,R=ld("il_r",[]),A=[],me=ld("il_s",null),pg="dash",edit=null,F={q:"",u:"",s:"",d1:"",d2:""},ready=false,err="";
+const isAdmin=()=>me&&me.role==="admin";
+const opt=(arr,sel,ph)=>(ph?`<option value="">${ph}</option>`:"")+arr.map(x=>`<option ${x===sel?"selected":""}>${e(x)}</option>`).join("");
+
+function go(p){pg=p;if(p!=="input")edit=null;draw()}
+function draw(){
+ const a=$("#app");
+ if(!API){a.innerHTML=head()+cfgForm();return}
+ if(!ready){a.innerHTML=head()+'<main><div class="empty">Memuat data...</div>'+(err?'<div class="msg">'+e(err)+'</div><div class="row"><button onclick="sync()">Coba lagi</button><button class="alt" onclick="resetApi()">Ubah URL</button></div>':'')+'</main>';return}
+ if(!A.length){a.innerHTML=head()+`<main><h2>Buat Admin Pertama</h2><div class="msg">Data masih kosong. Buat akun admin dulu. Hanya admin yang bisa menginput data.</div>${adminForm("Simpan & masuk","firstAdmin()")}</main>`;return}
+ if(!me){a.innerHTML=head()+`<main><h2>Masuk</h2><label>NID (10 karakter)</label><input id="nid" maxlength="10"><label>Password (tanggal lahir)</label><input id="pw" type="date"><div class="row"><button onclick="login()">Masuk sebagai admin</button><button class="alt" onclick="guest()">Lihat saja</button></div></main>`;return}
+ let c="";
+ if(pg==="dash")c=dash();else if(pg==="input")c=form();else if(pg==="hist")c=hist();else c=setting();
+ a.innerHTML=head(true)+`<main>${c}</main><nav>${[["dash","Dashboard"],["input","Input"],["hist","Histori"],["set","Setting"]].map(([k,t])=>`<button class="${pg===k?"on":""}" onclick="go('${k}')">${t}</button>`).join("")}</nav>`;
+}
+function head(u){return `<header><div><b>InstruLog MTW</b><small>PLN Nusantara Power UP Muara Tawar</small></div>${u?`<div style="text-align:right;font-size:13px;cursor:pointer" onclick="sync()">${e(me.nama)}<small>${isAdmin()?"Admin":"Hanya lihat"} · ketuk untuk segarkan</small></div>`:""}</header>`}
+function adminForm(btn,fn){return `<label>NID (tepat 10 karakter)</label><input id="a_nid" maxlength="10"><label>Nama</label><input id="a_nama"><label>Tanggal lahir (jadi password)</label><input id="a_tgl" type="date"><div class="row"><button onclick="${fn}">${btn}</button></div>`}
+function readAdmin(){const nid=$("#a_nid").value.trim(),nama=$("#a_nama").value.trim(),t=$("#a_tgl").value;
+ if(nid.length!==10){alert("NID harus tepat 10 karakter");return null}
+ if(!nama||!t){alert("Nama dan tanggal lahir wajib diisi");return null}
+ if(A.some(x=>x.nid===nid)){alert("NID sudah terdaftar");return null}
+ return{nid,nama,pw:hs(t),role:"admin"}}
+async function firstAdmin(){const a=readAdmin();if(!a)return;if(!await call({action:"setup",nid:a.nid,nama:a.nama,pw:a.pw}))return;me={nid:a.nid,nama:a.nama,role:"admin",pw:a.pw};sv("il_s",me);await sync()}
+async function login(){const nid=$("#nid").value.trim(),pw=hs($("#pw").value);const r=await call({action:"login",nid,pw});if(!r)return;me={nid,nama:r.nama,role:"admin",pw};sv("il_s",me);draw()}
+function guest(){me={nid:"",nama:"Tamu",role:"tamu"};sv("il_s",me);draw()}
+function logout(){me=null;sv("il_s",null);pg="dash";draw()}
+
+function dash(){
+ const m=today().slice(0,7),n=s=>R.filter(r=>r.status===s).length;
+ const last=[...R].sort((a,b)=>b.tgl.localeCompare(a.tgl)||b.id-a.id).slice(0,5);
+ return `<h2>Dashboard</h2><div class="grid"><div class="stat"><b>${R.length}</b><span>Total pekerjaan</span></div><div class="stat"><b>${R.filter(r=>r.tgl.startsWith(m)).length}</b><span>Bulan ini</span></div><div class="stat"><b>${n("Proses")}</b><span>Sedang proses</span></div><div class="stat"><b>${n("Pending")}</b><span>Pending</span></div></div><h2>Terbaru</h2>${last.length?last.map(card).join(""):'<div class="empty">Belum ada data. Buka menu Input untuk mulai mencatat.</div>'}`}
+function card(r,act){return `<div class="card ${e(r.status)}"><span class="badge ${e(r.status)}">${e(r.status)}</span><div class="tag">${e(r.kks)}</div><div class="meta">${e(r.tgl)} · ${e(r.unit)} / ${e(r.sub)}</div><div style="margin-top:6px"><b>Masalah:</b> ${e(r.masalah)}</div><div><b>Tindakan:</b> ${e(r.tindakan)}</div><div class="meta">Teknisi: ${e(r.teknisi)}</div>${act&&isAdmin()?`<div class="row"><button class="alt sm" onclick="editR(${r.id})">Edit</button><button class="del sm" onclick="delR(${r.id})">Hapus</button></div>`:""}</div>`}
+
+function form(){
+ if(!isAdmin())return `<div class="msg">Hanya admin yang bisa input data. Masuk sebagai admin lewat menu Setting → Keluar.</div>`;
+ const r=edit?R.find(x=>x.id===edit):{tgl:today(),unit:Object.keys(U)[0],sub:"",kks:"",masalah:"",tindakan:"",status:"Selesai"};
+ return `<h2>${edit?"Edit":"Input"} Corrective Maintenance</h2>
+ <label>Tanggal</label><input id="f_tgl" type="date" value="${e(r.tgl)}">
+ <label>Unit</label><select id="f_unit" onchange="fillSub('f_unit','f_sub')">${opt(Object.keys(U),r.unit)}</select>
+ <label>Sub unit</label><select id="f_sub">${opt(U[r.unit],r.sub)}</select>
+ <label>KKS / Tag number</label><input id="f_kks" value="${e(r.kks)}" placeholder="contoh: 10MBA10CP001">
+ <label>Masalah / kerusakan</label><textarea id="f_mas">${e(r.masalah)}</textarea>
+ <label>Tindakan perbaikan</label><textarea id="f_tin">${e(r.tindakan)}</textarea>
+ <label>Status</label><select id="f_st">${opt(["Selesai","Proses","Pending"],r.status)}</select>
+ <div class="row"><button onclick="saveR()">Simpan</button>${edit?'<button class="alt" onclick="go(\'hist\')">Batal</button>':""}</div>`}
+function fillSub(u,s){$("#"+s).innerHTML=opt(U[$("#"+u).value]||[],"",s==="h_sub"?"Semua sub unit":"")}
+async function saveR(){
+ const r={tgl:$("#f_tgl").value,unit:$("#f_unit").value,sub:$("#f_sub").value,kks:$("#f_kks").value.trim().toUpperCase(),masalah:$("#f_mas").value.trim(),tindakan:$("#f_tin").value.trim(),status:$("#f_st").value,teknisi:me.nama};
+ if(!r.tgl||!r.kks||!r.masalah){alert("Tanggal, KKS, dan masalah wajib diisi");return}
+ r.id=edit||Date.now();if(!await call({action:"save",rec:r}))return;edit=null;await sync();alert("Tersimpan");go("hist")}
+function editR(id){edit=id;pg="input";draw();scrollTo(0,0)}
+async function delR(id){if(confirm("Hapus data ini?")){if(await call({action:"delete",id}))await sync()}}
+
+function filtered(){const q=F.q.toLowerCase();
+ return R.filter(r=>(!q||(r.kks+" "+r.masalah+" "+r.tindakan).toLowerCase().includes(q))&&(!F.u||r.unit===F.u)&&(!F.s||r.sub===F.s)&&(!F.d1||r.tgl>=F.d1)&&(!F.d2||r.tgl<=F.d2)).sort((a,b)=>b.tgl.localeCompare(a.tgl)||b.id-a.id)}
+function hist(){const L=filtered();
+ return `<h2>Histori</h2><input id="h_q" placeholder="Cari KKS / kata kunci" value="${e(F.q)}" oninput="F.q=this.value;list()">
+ <div class="grid" style="margin:8px 0"><select id="h_unit" onchange="F.u=this.value;F.s='';fillSub('h_unit','h_sub');list()">${opt(Object.keys(U),F.u,"Semua unit")}</select><select id="h_sub" onchange="F.s=this.value;list()">${opt(U[F.u]||[],F.s,"Semua sub unit")}</select>
+ <input type="date" value="${F.d1}" onchange="F.d1=this.value;list()"><input type="date" value="${F.d2}" onchange="F.d2=this.value;list()"></div>
+ <div class="row" style="margin:0 0 10px"><button class="alt sm" onclick="F={q:'',u:'',s:'',d1:'',d2:''};draw()">Reset filter</button><button class="alt sm" onclick="csv()">Ekspor CSV</button></div><div id="list">${listHtml(L)}</div>`}
+function listHtml(L){return `<div class="meta" style="margin-bottom:8px">${L.length} data</div>`+(L.length?L.map(r=>card(r,1)).join(""):'<div class="empty">Tidak ada data yang cocok.</div>')}
+function list(){$("#list").innerHTML=listHtml(filtered())}
+function csv(){const L=filtered();if(!L.length){alert("Tidak ada data");return}
+ const q=v=>'"'+String(v).replace(/"/g,'""')+'"';
+ const t=["Tanggal,Unit,Sub Unit,KKS,Masalah,Tindakan,Status,Teknisi"].concat(L.map(r=>[r.tgl,r.unit,r.sub,r.kks,r.masalah,r.tindakan,r.status,r.teknisi].map(q).join(","))).join("\n");
+ dl(t,"histori-instrulog.csv","text/csv")}
+function dl(t,n,m){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([t],{type:m}));a.download=n;a.click()}
+
+function setting(){
+ let c=`<h2>Setting</h2><div class="card"><b>${e(me.nama)}</b><div class="meta">${isAdmin()?"Admin · NID "+e(me.nid):"Mode hanya lihat"}</div><div class="row"><button class="alt" onclick="logout()">Keluar</button></div></div>`;
+ if(isAdmin())c+=`<h2>Tambah admin</h2>${adminForm("Tambah admin","addAdmin()")}<h2 style="margin-top:20px">Daftar admin</h2>${A.map(x=>`<div class="card"><b>${e(x.nama)}</b> <span class="meta">${e(x.nid)}</span>${x.nid!==me.nid?` <button class="del sm" style="float:right" onclick="delAdmin('${e(x.nid)}')">Hapus</button>`:""}</div>`).join("")}
+ <div class="msg">Data tersimpan di Google Sheets dan dipakai bersama tim. Spreadsheet-nya juga berfungsi sebagai cadangan.</div><div class="row"><button class="alt" onclick="resetApi()">Ubah URL Google Sheets</button></div>`;
+ return c}
+async function addAdmin(){const a=readAdmin();if(!a)return;if(await call({action:"addAdmin",admin:a})){alert("Admin ditambahkan");await sync()}}
+async function delAdmin(n){if(confirm("Hapus admin ini?")){if(await call({action:"delAdmin",target:n}))await sync()}}
+function bk(){dl(JSON.stringify({r:R,a:A}),"backup-instrulog.json","application/json")}
+function rs(i){const f=i.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{try{const d=JSON.parse(rd.result);if(!Array.isArray(d.r)||!Array.isArray(d.a))throw 0;if(!confirm("Timpa data sekarang dengan backup?"))return;R=d.r;A=d.a;sv("il_r",R);sv("il_a",A);alert("Data dipulihkan");draw()}catch(x){alert("File backup tidak valid")}};rd.readAsText(f)}
+function cfgForm(){return '<main><h2>Hubungkan ke Google Sheets</h2><div class="msg">Tempel URL Web App dari Google Apps Script (berakhiran /exec). Cukup sekali per HP.</div><label>URL Web App</label><input id="api" placeholder="https://script.google.com/macros/s/.../exec"><div class="row"><button onclick="saveApi()">Simpan dan hubungkan</button></div></main>'}
+function saveApi(){const u=$("#api").value.trim();if(!/^https:\/\/script\.google\.com\/.+\/exec$/.test(u)){alert("URL tidak valid. Harus diawali https://script.google.com dan diakhiri /exec");return}API=u;localStorage.setItem("il_api",u);sync()}
+function resetApi(){if(confirm("Ubah URL Google Sheets?")){localStorage.removeItem("il_api");API="";ready=false;draw()}}
+async function call(b){try{const r=await fetch(API,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({nid:me&&me.nid,pw:me&&me.pw,...b})});const j=await r.json();if(!j.ok){alert(j.error||"Gagal");return null}return j}catch(x){alert("Tidak bisa terhubung ke Google Sheets. Cek internet.");return null}}
+async function sync(){try{const r=await fetch(API+"?action=list");const j=await r.json();if(!j.ok)throw 0;R=j.records;A=j.admins;sv("il_r",R);ready=true;err="";if(me&&me.role==="admin"&&!A.some(x=>x.nid===me.nid)){me=null;sv("il_s",null)}}catch(x){err="Gagal memuat data. Cek internet dan URL Google Sheets.";if(R.length)ready=true}draw()}
+document.addEventListener("visibilitychange",()=>{if(!document.hidden&&API&&pg!=="input")sync()});
+draw();if(API)sync();
+</script></body></html>

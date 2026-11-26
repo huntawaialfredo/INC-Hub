@@ -1,0 +1,51 @@
+const HDR=["id","tgl","unit","sub","kks","masalah","tindakan","status","teknisi"];
+const AHDR=["nid","nama","pw"];
+function sh(name,cols){
+  const ss=SpreadsheetApp.getActive();
+  let s=ss.getSheetByName(name);
+  if(!s){s=ss.insertSheet(name);s.getRange("A:Z").setNumberFormat("@");s.appendRow(cols);s.setFrozenRows(1);}
+  return s;
+}
+function rows(s){
+  const v=s.getDataRange().getValues();const h=v.shift();
+  return v.map(r=>{const o={};h.forEach((k,i)=>o[k]=String(r[i]));return o;});
+}
+function out(o){return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);}
+function doGet(){
+  const recs=rows(sh("Data",HDR)).filter(r=>r.id!=="").map(r=>({...r,id:Number(r.id)}));
+  const adm=rows(sh("Admin",AHDR)).map(a=>({nid:a.nid,nama:a.nama}));
+  return out({ok:true,records:recs,admins:adm});
+}
+function doPost(e){
+  const L=LockService.getScriptLock();L.waitLock(20000);
+  try{
+    const b=JSON.parse(e.postData.contents);
+    const A=sh("Admin",AHDR),D=sh("Data",HDR),admins=rows(A);
+    if(b.action==="setup"){
+      if(admins.length)return out({ok:false,error:"Admin sudah ada"});
+      A.appendRow([b.nid,b.nama,b.pw]);return out({ok:true});
+    }
+    const me=admins.find(a=>a.nid===String(b.nid)&&a.pw===String(b.pw));
+    if(!me)return out({ok:false,error:"NID atau tanggal lahir salah"});
+    if(b.action==="login")return out({ok:true,nama:me.nama});
+    const ids=D.getRange(1,1,D.getLastRow(),1).getValues().flat().map(String);
+    if(b.action==="save"){
+      const r=b.rec,row=HDR.map(k=>r[k]),i=ids.indexOf(String(r.id));
+      if(i>0)D.getRange(i+1,1,1,HDR.length).setValues([row]);else D.appendRow(row);
+      return out({ok:true});
+    }
+    if(b.action==="delete"){
+      const i=ids.indexOf(String(b.id));if(i>0)D.deleteRow(i+1);return out({ok:true});
+    }
+    if(b.action==="addAdmin"){
+      if(admins.some(a=>a.nid===b.admin.nid))return out({ok:false,error:"NID sudah terdaftar"});
+      A.appendRow([b.admin.nid,b.admin.nama,b.admin.pw]);return out({ok:true});
+    }
+    if(b.action==="delAdmin"){
+      if(b.target===me.nid)return out({ok:false,error:"Tidak bisa menghapus diri sendiri"});
+      const i=admins.findIndex(a=>a.nid===b.target);if(i>=0)A.deleteRow(i+2);return out({ok:true});
+    }
+    return out({ok:false,error:"Aksi tidak dikenal"});
+  }catch(x){return out({ok:false,error:String(x)});}
+  finally{L.releaseLock();}
+}
